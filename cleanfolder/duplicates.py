@@ -11,7 +11,7 @@ from pathlib import Path
 from thefuzz import fuzz
 
 from cleanfolder.llm.base import LLMProvider
-from cleanfolder.utils import FileInfo, format_size
+from cleanfolder.utils import FileInfo, FolderInfo, format_size
 
 
 @dataclass
@@ -178,3 +178,61 @@ def _normalize_stem(filename: str) -> str:
 def _pick_best_to_keep(files: list[FileInfo]) -> FileInfo:
     """Heuristic: keep the file with the shortest name (likely the 'original')."""
     return min(files, key=lambda f: (len(f.name), -f.modified.timestamp()))
+
+
+# ── folder-level duplicate detection ─────────────────────────────────────────
+
+
+@dataclass
+class DuplicateFolderGroup:
+    """A set of subdirectories that appear to be duplicates."""
+
+    folders: list[FolderInfo]
+    reason: str
+    recommended_keep: FolderInfo | None = None
+    space_reclaimable: int = 0
+
+    def __post_init__(self):
+        if self.folders and self.recommended_keep is None:
+            self.recommended_keep = min(
+                self.folders, key=lambda f: (len(f.name), -f.modified.timestamp())
+            )
+        self.space_reclaimable = sum(
+            f.total_size for f in self.folders if f is not self.recommended_keep
+        )
+
+
+def find_similar_folders(
+    folders: list[FolderInfo],
+    *,
+    similarity_threshold: int = 80,
+) -> list[DuplicateFolderGroup]:
+    """Find subdirectories with similar names (e.g. 'Project' vs 'Project (1)')."""
+    groups: list[DuplicateFolderGroup] = []
+    used: set[Path] = set()
+
+    for i, a in enumerate(folders):
+        if a.path in used:
+            continue
+        cluster = [a]
+        stem_a = _normalize_stem(a.name)
+        for b in folders[i + 1:]:
+            if b.path in used:
+                continue
+            stem_b = _normalize_stem(b.name)
+            score = fuzz.ratio(stem_a, stem_b)
+            if score >= similarity_threshold:
+                cluster.append(b)
+        if len(cluster) >= 2:
+            used.update(f.path for f in cluster)
+            groups.append(DuplicateFolderGroup(
+                folders=cluster,
+                reason=f"Similar folder names (fuzzy match ≥{similarity_threshold}%)",
+            ))
+
+    return groups
+
+
+def find_empty_folders(folders: list[FolderInfo]) -> list[FolderInfo]:
+    """Return folders that contain zero files."""
+    return [f for f in folders if f.is_empty]

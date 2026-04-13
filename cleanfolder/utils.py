@@ -28,11 +28,31 @@ class FileInfo:
     def hash(self) -> str:
         """Lazily compute SHA-256 hash on first access."""
         if self._hash is None:
-            self._hash = compute_sha256(self.path)
+            try:
+                self._hash = compute_sha256(self.path)
+            except (OSError, PermissionError):
+                self._hash = f"unreadable-{self.size}-{self.name}"
         return self._hash
 
     def age_days(self) -> int:
         """Days since the file was last modified."""
+        now = datetime.now(timezone.utc)
+        modified_utc = self.modified.replace(tzinfo=timezone.utc) if self.modified.tzinfo is None else self.modified
+        return (now - modified_utc).days
+
+
+@dataclass
+class FolderInfo:
+    """Metadata about a subdirectory discovered during scanning."""
+
+    name: str
+    path: Path
+    file_count: int
+    total_size: int
+    is_empty: bool
+    modified: datetime
+
+    def age_days(self) -> int:
         now = datetime.now(timezone.utc)
         modified_utc = self.modified.replace(tzinfo=timezone.utc) if self.modified.tzinfo is None else self.modified
         return (now - modified_utc).days
@@ -113,7 +133,10 @@ def _default_config() -> dict:
         },
         "scan": {
             "skip_hidden": True,
-            "skip_patterns": [".DS_Store", "__MACOSX", "Thumbs.db", ".localized"],
+            "skip_patterns": [
+                ".DS_Store", "__MACOSX", "Thumbs.db", ".localized",
+                "twingate*", "jumpcloud*", "freshservice*", "com.apple.*",
+            ],
             "large_file_threshold_mb": 100,
             "old_file_days": 90,
             "max_files": 10000,

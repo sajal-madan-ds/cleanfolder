@@ -31,7 +31,7 @@ def main():
 @click.option("--export", "export_path", type=click.Path(dir_okay=False), default=None, help="Export report to a markdown file.")
 @click.option("--max-files", type=int, default=None, help="Override max file limit.")
 @click.option("--no-llm", is_flag=True, help="Skip all LLM calls (offline mode).")
-@click.option("--action", type=click.Choice(["report", "trash-duplicates", "trash-temp", "organize", "archive"]), default="report", help="Action to perform after analysis.")
+@click.option("--action", type=click.Choice(["report", "trash-duplicates", "trash-temp", "trash-empty-folders", "organize", "archive"]), default="report", help="Action to perform after analysis.")
 def scan(
     folder: str,
     provider: str | None,
@@ -106,6 +106,7 @@ def _execute_action(action: str, result, *, dry_run: bool):
     from cleanfolder.actions import (
         trash_duplicates,
         trash_temp_files,
+        trash_empty_folders,
         organize_files,
         archive_files,
     )
@@ -114,6 +115,8 @@ def _execute_action(action: str, result, *, dry_run: bool):
         trash_duplicates(result.all_duplicates, dry_run=dry_run)
     elif action == "trash-temp":
         trash_temp_files(result.categories.temp_files, dry_run=dry_run)
+    elif action == "trash-empty-folders":
+        trash_empty_folders(result.empty_folders, dry_run=dry_run)
     elif action == "organize":
         organize_files(result, dry_run=dry_run)
     elif action == "archive":

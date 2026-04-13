@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from cleanfolder.scanner import scan_folder
+from cleanfolder.scanner import scan_folder, scan_subfolders
 from cleanfolder.utils import FileInfo
 
 
@@ -84,3 +84,31 @@ def test_file_info_lazy_hash(sample_folder: Path):
     h = txt.hash
     assert isinstance(h, str) and len(h) == 64
     assert txt._hash == h
+
+
+def test_scan_subfolders(sample_folder: Path):
+    folders = scan_subfolders(sample_folder)
+    names = {f.name for f in folders}
+    assert "subdir" in names
+
+
+def test_scan_subfolders_detects_empty(tmp_path: Path):
+    (tmp_path / "empty_dir").mkdir()
+    (tmp_path / "has_files").mkdir()
+    (tmp_path / "has_files" / "a.txt").write_text("content")
+    folders = scan_subfolders(tmp_path)
+    empty = [f for f in folders if f.is_empty]
+    non_empty = [f for f in folders if not f.is_empty]
+    assert any(f.name == "empty_dir" for f in empty)
+    assert any(f.name == "has_files" for f in non_empty)
+
+
+def test_scan_subfolders_counts_files(tmp_path: Path):
+    d = tmp_path / "mydir"
+    d.mkdir()
+    (d / "a.txt").write_text("aaa")
+    (d / "b.txt").write_text("bbb")
+    folders = scan_subfolders(tmp_path)
+    mydir = next(f for f in folders if f.name == "mydir")
+    assert mydir.file_count == 2
+    assert mydir.total_size > 0

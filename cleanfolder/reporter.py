@@ -22,6 +22,8 @@ def print_report(result: AnalysisResult) -> None:
     _print_header(result)
     _print_category_breakdown(result)
     _print_duplicates(result)
+    _print_similar_folders(result)
+    _print_empty_folders(result)
     _print_large_files(result)
     _print_old_files(result)
     _print_temp_files(result)
@@ -64,6 +66,25 @@ def export_markdown(result: AnalysisResult, output_path: Path) -> None:
                 lines.append(f"- `{f.name}` ({format_size(f.size)}){keep}")
             lines.append("")
 
+    # Similar folders
+    if result.similar_folders:
+        lines.append("## Similar Folders")
+        for i, group in enumerate(result.similar_folders, 1):
+            lines.append(f"### Folder Group {i}")
+            lines.append(f"*{group.reason}*")
+            lines.append("")
+            for f in group.folders:
+                keep = " **(keep)**" if f is group.recommended_keep else ""
+                lines.append(f"- `{f.name}/` — {f.file_count} files, {format_size(f.total_size)}{keep}")
+            lines.append("")
+
+    # Empty folders
+    if result.empty_folders:
+        lines.append("## Empty Folders")
+        for f in result.empty_folders:
+            lines.append(f"- `{f.name}/`")
+        lines.append("")
+
     # Large files
     if result.categories.large_files:
         lines.append("## Large Files")
@@ -95,7 +116,7 @@ def _print_header(result: AnalysisResult) -> None:
     header = Text()
     header.append("CleanFolder Analysis\n", style="bold magenta")
     header.append(f"Target: {result.target}\n", style="dim")
-    header.append(f"Files:  {len(result.files)}   Size: {format_size(result.total_size)}")
+    header.append(f"Files: {len(result.files)}   Folders: {len(result.subfolders)}   Size: {format_size(result.total_size)}")
     console.print(Panel(header, border_style="blue"))
     console.print()
 
@@ -160,6 +181,60 @@ def _print_duplicates(result: AnalysisResult) -> None:
         console.print()
 
 
+def _print_similar_folders(result: AnalysisResult) -> None:
+    groups = result.similar_folders
+    if not groups:
+        return
+
+    console.print(
+        f"[bold yellow]Found {len(groups)} similar folder group(s) "
+        f"({format_size(result.folder_reclaimable_size)} potentially reclaimable)[/bold yellow]\n"
+    )
+
+    for i, group in enumerate(groups, 1):
+        table = Table(
+            title=f"Folder Group {i}",
+            caption=group.reason,
+            show_lines=True,
+        )
+        table.add_column("Folder", style="white")
+        table.add_column("Files", justify="right")
+        table.add_column("Size", justify="right", style="cyan")
+        table.add_column("Modified", style="dim")
+        table.add_column("Action", justify="center")
+
+        for f in group.folders:
+            is_keep = f is group.recommended_keep
+            action = "[green]KEEP[/green]" if is_keep else "[red]REMOVE[/red]"
+            style = "bold" if is_keep else ""
+            table.add_row(
+                Text(f"{f.name}/", style=style),
+                str(f.file_count),
+                format_size(f.total_size),
+                f"{f.modified:%Y-%m-%d}",
+                action,
+            )
+
+        console.print(table)
+        console.print()
+
+
+def _print_empty_folders(result: AnalysisResult) -> None:
+    empty = result.empty_folders
+    if not empty:
+        return
+
+    table = Table(title="Empty Folders", show_lines=False)
+    table.add_column("Folder", style="red")
+    table.add_column("Modified", style="dim")
+
+    for f in empty:
+        table.add_row(f"{f.name}/", f"{f.modified:%Y-%m-%d}")
+
+    console.print(table)
+    console.print(f"[dim]{len(empty)} empty folder(s) can be removed.[/dim]\n")
+
+
 def _print_large_files(result: AnalysisResult) -> None:
     large = result.categories.large_files
     if not large:
@@ -219,14 +294,17 @@ def _print_llm_suggestions(result: AnalysisResult) -> None:
 
 
 def _print_summary(result: AnalysisResult) -> None:
-    reclaimable = result.reclaimable_size + result.temp_reclaimable
+    reclaimable = result.reclaimable_size + result.folder_reclaimable_size + result.temp_reclaimable
     summary = Table(title="Summary", show_header=False, show_lines=False, padding=(0, 2))
     summary.add_column("Label", style="bold")
     summary.add_column("Value", style="cyan")
 
     summary.add_row("Total files", str(len(result.files)))
+    summary.add_row("Subfolders", str(len(result.subfolders)))
     summary.add_row("Total size", format_size(result.total_size))
-    summary.add_row("Duplicate groups", str(len(result.all_duplicates)))
+    summary.add_row("Duplicate file groups", str(len(result.all_duplicates)))
+    summary.add_row("Similar folder groups", str(len(result.similar_folders)))
+    summary.add_row("Empty folders", str(len(result.empty_folders)))
     summary.add_row("Temp files", str(len(result.categories.temp_files)))
     summary.add_row("Estimated reclaimable", format_size(reclaimable))
 

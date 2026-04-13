@@ -21,6 +21,11 @@ scan:
     - "__MACOSX"
     - "Thumbs.db"
     - ".localized"
+    # Corporate / system agents — not personal files
+    - "twingate*"
+    - "jumpcloud*"
+    - "freshservice*"
+    - "com.apple.*"
   large_file_threshold_mb: 100
   old_file_days: 90
   max_files: 10000

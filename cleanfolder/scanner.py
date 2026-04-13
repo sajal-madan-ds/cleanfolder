@@ -9,6 +9,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, MofNCo
 
 from cleanfolder.utils import (
     FileInfo,
+    FolderInfo,
     file_created_time,
     file_modified_time,
     format_size,
@@ -32,7 +33,10 @@ def scan_folder(
     if not target.is_dir():
         raise NotADirectoryError(f"Target is not a directory: {target}")
 
-    skip_patterns = skip_patterns or [".DS_Store", "__MACOSX", "Thumbs.db", ".localized"]
+    skip_patterns = skip_patterns or [
+        ".DS_Store", "__MACOSX", "Thumbs.db", ".localized",
+        "twingate*", "jumpcloud*", "freshservice*", "com.apple.*",
+    ]
 
     all_paths = _collect_paths(target, skip_hidden=skip_hidden, skip_patterns=skip_patterns)
 
@@ -84,6 +88,53 @@ def _collect_paths(
             continue
         paths.append(entry)
     return paths
+
+
+def scan_subfolders(
+    target: Path,
+    *,
+    skip_hidden: bool = True,
+) -> list[FolderInfo]:
+    """
+    Scan immediate subdirectories of *target* and return FolderInfo objects.
+
+    Computes file count and total size for each subfolder (recursively).
+    """
+    folders: list[FolderInfo] = []
+    try:
+        entries = sorted(target.iterdir())
+    except PermissionError:
+        return []
+
+    for entry in entries:
+        if not entry.is_dir():
+            continue
+        if skip_hidden and entry.name.startswith("."):
+            continue
+
+        file_count = 0
+        total_size = 0
+        try:
+            for child in entry.rglob("*"):
+                if child.is_file():
+                    file_count += 1
+                    try:
+                        total_size += child.stat().st_size
+                    except OSError:
+                        pass
+        except PermissionError:
+            pass
+
+        folders.append(FolderInfo(
+            name=entry.name,
+            path=entry,
+            file_count=file_count,
+            total_size=total_size,
+            is_empty=(file_count == 0),
+            modified=file_modified_time(entry),
+        ))
+
+    return folders
 
 
 def _build_file_info(path: Path) -> FileInfo | None:

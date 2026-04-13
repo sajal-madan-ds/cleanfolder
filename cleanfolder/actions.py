@@ -12,7 +12,7 @@ from rich.table import Table
 
 from cleanfolder.analyzer import AnalysisResult
 from cleanfolder.duplicates import DuplicateGroup
-from cleanfolder.utils import FileInfo, format_size
+from cleanfolder.utils import FileInfo, FolderInfo, format_size
 
 console = Console()
 
@@ -155,6 +155,46 @@ def archive_files(
                     console.print(f"[red]Failed to trash {f.name}: {e}[/red]")
 
     return archive_path
+
+
+def trash_empty_folders(
+    empty_folders: list[FolderInfo],
+    *,
+    dry_run: bool = True,
+) -> list[Path]:
+    """Remove empty folders (directories with zero files)."""
+    from send2trash import send2trash
+
+    if not empty_folders:
+        console.print("[dim]No empty folders found.[/dim]")
+        return []
+
+    table = Table(title="Empty Folders to Remove", show_lines=True)
+    table.add_column("Folder", style="red")
+    table.add_column("Modified", style="dim")
+    for f in empty_folders:
+        table.add_row(f"{f.name}/", f"{f.modified:%Y-%m-%d}")
+    console.print(table)
+    console.print(f"\n[bold]{len(empty_folders)} empty folder(s)[/bold]")
+
+    if dry_run:
+        console.print("[yellow]Dry run — no folders were removed. Use --execute to apply.[/yellow]")
+        return [f.path for f in empty_folders]
+
+    if not click.confirm("Move these empty folders to Trash?"):
+        console.print("[dim]Cancelled.[/dim]")
+        return []
+
+    trashed: list[Path] = []
+    for f in empty_folders:
+        try:
+            send2trash(str(f.path))
+            trashed.append(f.path)
+        except Exception as e:
+            console.print(f"[red]Failed to trash {f.name}/: {e}[/red]")
+
+    console.print(f"[green]Moved {len(trashed)} empty folder(s) to Trash.[/green]")
+    return trashed
 
 
 def organize_files(

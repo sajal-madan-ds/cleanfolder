@@ -9,9 +9,11 @@ import pytest
 from cleanfolder.duplicates import (
     find_exact_duplicates,
     find_near_duplicates,
+    find_similar_folders,
+    find_empty_folders,
     _normalize_stem,
 )
-from cleanfolder.scanner import scan_folder
+from cleanfolder.scanner import scan_folder, scan_subfolders
 
 
 @pytest.fixture
@@ -80,3 +82,28 @@ def test_empty_folder(tmp_path: Path):
     assert files == []
     assert find_exact_duplicates(files) == []
     assert find_near_duplicates(files) == []
+
+
+def test_similar_folders_detected(tmp_path: Path):
+    (tmp_path / "Project").mkdir()
+    (tmp_path / "Project (1)").mkdir()
+    (tmp_path / "Project-copy").mkdir()
+    (tmp_path / "Unrelated").mkdir()
+    folders = scan_subfolders(tmp_path)
+    groups = find_similar_folders(folders)
+    assert len(groups) >= 1
+    group_names = {f.name for f in groups[0].folders}
+    assert "Project" in group_names
+
+
+def test_empty_folders_detected(tmp_path: Path):
+    (tmp_path / "empty1").mkdir()
+    (tmp_path / "empty2").mkdir()
+    (tmp_path / "has_stuff").mkdir()
+    (tmp_path / "has_stuff" / "file.txt").write_text("data")
+    folders = scan_subfolders(tmp_path)
+    empties = find_empty_folders(folders)
+    empty_names = {f.name for f in empties}
+    assert "empty1" in empty_names
+    assert "empty2" in empty_names
+    assert "has_stuff" not in empty_names

@@ -8,13 +8,16 @@ from pathlib import Path
 from cleanfolder.categorizer import CategoryResult, categorize_files, get_llm_suggestions
 from cleanfolder.duplicates import (
     DuplicateGroup,
+    DuplicateFolderGroup,
     find_exact_duplicates,
     find_llm_duplicates,
     find_near_duplicates,
+    find_similar_folders,
+    find_empty_folders,
 )
 from cleanfolder.llm.base import LLMProvider
-from cleanfolder.scanner import scan_folder
-from cleanfolder.utils import FileInfo
+from cleanfolder.scanner import scan_folder, scan_subfolders
+from cleanfolder.utils import FileInfo, FolderInfo
 
 
 @dataclass
@@ -23,9 +26,12 @@ class AnalysisResult:
 
     target: Path
     files: list[FileInfo]
+    subfolders: list[FolderInfo] = field(default_factory=list)
     exact_duplicates: list[DuplicateGroup] = field(default_factory=list)
     near_duplicates: list[DuplicateGroup] = field(default_factory=list)
     llm_duplicates: list[DuplicateGroup] = field(default_factory=list)
+    similar_folders: list[DuplicateFolderGroup] = field(default_factory=list)
+    empty_folders: list[FolderInfo] = field(default_factory=list)
     categories: CategoryResult = field(default_factory=CategoryResult)
     llm_suggestions: str = ""
 
@@ -40,6 +46,10 @@ class AnalysisResult:
     @property
     def reclaimable_size(self) -> int:
         return sum(g.space_reclaimable for g in self.all_duplicates)
+
+    @property
+    def folder_reclaimable_size(self) -> int:
+        return sum(g.space_reclaimable for g in self.similar_folders)
 
     @property
     def temp_reclaimable(self) -> int:
@@ -73,10 +83,18 @@ async def analyze_folder(
         show_progress=show_progress,
     )
 
-    result = AnalysisResult(target=target, files=files)
+    subfolders = scan_subfolders(
+        target,
+        skip_hidden=cfg.get("skip_hidden", True),
+    )
+
+    result = AnalysisResult(target=target, files=files, subfolders=subfolders)
 
     result.exact_duplicates = find_exact_duplicates(files)
     result.near_duplicates = find_near_duplicates(files)
+
+    result.similar_folders = find_similar_folders(subfolders)
+    result.empty_folders = find_empty_folders(subfolders)
 
     if provider:
         result.llm_duplicates = await find_llm_duplicates(files, provider)
