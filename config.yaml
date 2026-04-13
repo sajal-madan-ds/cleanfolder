@@ -1,0 +1,26 @@
+llm:
+  default_provider: openai
+  fallback_order: [openai, anthropic, ollama, vllm]
+  openai:
+    model: gpt-4o-mini
+    api_key_env: OPENAI_API_KEY
+  anthropic:
+    model: claude-sonnet-4-20250514
+    api_key_env: ANTHROPIC_API_KEY
+  ollama:
+    model: llama3
+    base_url: http://localhost:11434
+  vllm:
+    model: meta-llama/Llama-3-8b
+    base_url: http://localhost:8000
+
+scan:
+  skip_hidden: true
+  skip_patterns:
+    - ".DS_Store"
+    - "__MACOSX"
+    - "Thumbs.db"
+    - ".localized"
+  large_file_threshold_mb: 100
+  old_file_days: 90
+  max_files: 10000
